@@ -8,7 +8,7 @@ import { cancelBooking, cancelBookingsByEvent,
 const router = express.Router()
 
 router.post("/booking", protect, createBooking)
-router.get("/booking/", protect, getAllBooking)
+router.get("/booking", protect, getAllBooking)
 router.get("/booking/:id", protect, getSingleBooking)
 router.put("/booking/:id", protect, updateBooking)
 router.patch("/booking/:id/cancel", protect, cancelBooking)

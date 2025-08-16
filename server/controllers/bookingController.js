@@ -136,44 +136,55 @@ export const getAllBooking = async (req, res) => {
 };
 
 
-
 export const stripeWebhook = async (req, res) => {
   const sig = req.headers["stripe-signature"];
   let event;
 
   try {
     event = stripe.webhooks.constructEvent(
-      req.rawBody,
+      req.body, // make sure raw body hai
       sig,
       process.env.STRIPE_WEBHOOK_SECRET
     );
   } catch (err) {
-    console.error("⚠️ Webhook signature verification failed.", err.message);
+    console.error("Webhook signature verification failed:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  switch (event.type) {
-    case "payment_intent.succeeded": {
+  try {
+    if (event.type === "payment_intent.succeeded") {
       const paymentIntent = event.data.object;
       const bookingId = paymentIntent.metadata.bookingId;
 
-      await Booking.findByIdAndUpdate(bookingId, { paymentStatus: "paid" });
-      console.log(`✅ Booking ${bookingId} marked as succeeded`);
-      break;
+      const booking = await Booking.findById(bookingId);
+      if (booking) {
+        const qrUrl = await generateAndUploadQRCode(
+          `${process.env.FRONTEND_URL}/ticket/${booking._id}`,
+          "ticket_qr"
+        );
+
+        booking.paymentStatus = "paid";
+        booking.qrCode = qrUrl;
+        await booking.save();
+        console.log("✅ Booking marked as PAID:", bookingId);
+      } else {
+        console.warn("Booking not found for:", bookingId);
+      }
     }
-    case "payment_intent.payment_failed": {
+
+    if (event.type === "payment_intent.payment_failed") {
       const paymentIntent = event.data.object;
       const bookingId = paymentIntent.metadata.bookingId;
 
       await Booking.findByIdAndUpdate(bookingId, { paymentStatus: "failed" });
-      console.log(`❌ Booking ${bookingId} marked as failed`);
-      break;
+      console.log("❌ Booking marked as FAILED:", bookingId);
     }
-    default:
-      console.log(`Unhandled event type ${event.type}`);
-  }
 
-  res.json({ received: true });
+    res.json({ received: true }); // always 200
+  } catch (error) {
+    console.error("Webhook error:", error);
+    res.status(500).send("Server Error");
+  }
 };
 
 export const getSingleBooking = async (req, res) => {
