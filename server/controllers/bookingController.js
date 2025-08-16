@@ -126,48 +126,57 @@ export const getAllBooking = async (req, res) => {
 
     }
 }
+
+
 export const stripeWebhook = async (req, res) => {
-    const sig = req.headers["stripe-signature"];
-    let event;
+  const sig = req.headers["stripe-signature"];
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
+  } catch (err) {
+    console.error("Webhook signature verification failed:", err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
 
-    try {
-        event = stripe.webhooks.constructEvent(req.rawBody, sig, process.env.STRIPE_WEBHOOK_SECRET);
-    } catch (err) {
-        return res.status(400).send(`Webhook Error: ${err.message}`);
+  // ✅ Payment succeeded
+  if (event.type === "payment_intent.succeeded") {
+    const paymentIntent = event.data.object;
+    const bookingId = paymentIntent.metadata.bookingId;
+
+    const booking = await Booking.findById(bookingId).populate("event user");
+    if (!booking) {
+      console.error(`Booking ${bookingId} not found`);
+      return res.status(404).json({ error: "Booking not found" });
     }
 
-    if (event.type === "payment_intent.succeeded") {
-        const paymentIntent = event.data.object;
-        const bookingId = paymentIntent.metadata.bookingId;
+    // generate QR Code & upload
+    const qrUrl = await generateAndUploadQRCode(
+      `${process.env.FRONTEND_URL}/ticket/${booking._id}`,
+      "ticket_qr"
+    );
 
-        const booking = await Booking.findById(bookingId).populate("event user");
-        if (!booking) {
-            console.error(`Booking ${bookingId} not found`);
-            return;
-        }
+    booking.paymentStatus = "paid";
+    booking.qrCode = qrUrl;
+    await booking.save();
 
-        const qrUrl = await generateAndUploadQRCode(
-            `${process.env.FRONTEND_URL}/ticket/${booking._id}`, // payload
-            "ticket_qr" // optional prefix
-        );
+    console.log(`✅ Booking ${bookingId} marked as paid and QR generated.`);
+  }
 
-        booking.paymentStatus = "paid";
-        booking.qrCode = qrUrl;
-        await booking.save();
+  if (event.type === "payment_intent.payment_failed") {
+    const paymentIntent = event.data.object;
+    const bookingId = paymentIntent.metadata.bookingId;
 
-        console.log(`Booking ${bookingId} marked as paid and QR generated.`);
-    }
+    await Booking.findByIdAndUpdate(bookingId, { paymentStatus: "failed" });
+    console.log(`❌ Booking ${bookingId} marked as failed.`);
+  }
 
-    if (event.type === "payment_intent.payment_failed") {
-        const paymentIntent = event.data.object;
-        const bookingId = paymentIntent.metadata.bookingId;
-
-        await Booking.findByIdAndUpdate(bookingId, { paymentStatus: "failed" });
-        console.log(`Booking ${bookingId} marked as failed.`);
-    }
-
-    res.json({ received: true });
+  res.json({ received: true });
 };
+
 export const getSingleBooking = async (req, res) => {
     try {
         const userId = req.user._id;
