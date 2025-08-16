@@ -80,7 +80,6 @@ export const getAllBooking = async (req, res) => {
     try {
         const userId = req.user._id;
         const role = req.user.role;
-
         const title = req.query.title || ''
         const paymentStatus = req.query.paymentStatus || ''
         const page = parseInt(req.query.page) || 1

@@ -8,6 +8,7 @@ import morgan from 'morgan';
 import connectCloudinary from './middleware/cloudinary.js';
 import bookingRoute from './routes/bookingsRoutes.js';
 import reviewRoute from './routes/reviewRoutes.js'
+import bodyParser from 'body-parser';
 import { stripeWebhook } from './controllers/bookingController.js';
 const app = express();
 
@@ -38,7 +39,7 @@ app.get('/', async (req, res) => {
 })
 
 app.post("/stripe",
-    express.raw({ type: "application/json" }),
+    bodyParser.raw({ type: "application/json" }),
     stripeWebhook
 );
 
