@@ -12,28 +12,19 @@ import bodyParser from 'body-parser';
 import { stripeWebhook } from './controllers/bookingController.js';
 
 const app = express();
+app.post("/stripe", bodyParser.raw({ type: "application/json" }), stripeWebhook);
 
 // mongo
 dbConnect()
 connectCloudinary()
 
-// middleware
 app.use(morgan('dev')); // for logging requests
 app.use(cors({
   origin: "http://localhost:5173",
   credentials: true
 }));
 
-// ⚠️ JSON parser ko Stripe webhook se alag handle karna hoga
-// Stripe webhook ke alawa sab pe json parser chalega
-app.use((req, res, next) => {
-  if (req.originalUrl === "/stripe") {
-    next();
-  } else {
-    express.json()(req, res, next);
-  }
-});
-
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static('uploads'));
 
@@ -47,12 +38,6 @@ app.get('/', async (req, res) => {
   res.send('Hello World!')
 });
 
-// ✅ Stripe webhook endpoint (raw body required)
-app.post(
-  "/stripe",
-  bodyParser.raw({ type: "application/json" }),
-  stripeWebhook
-);
 
 const PORT = process.env.PORT || 5000;
 
