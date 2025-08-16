@@ -77,101 +77,100 @@ export const createBooking = async (req, res) => {
     }
 };
 export const getAllBooking = async (req, res) => {
-    try {
-        const userId = req.user._id;
-        const role = req.user.role;
-        const title = req.query.title || ''
-        const paymentStatus = req.query.paymentStatus || ''
-        const page = parseInt(req.query.page) || 1
-        const limit = parseInt(req.query.limit) || 5;
-        const skip = (page - 1) * limit
-        let filter = {};
-        if (role === "user") {
-            filter.user = userId
-        }
+  try {
+    const userId = req.user._id;
+    const role = req.user.role;
+    const title = req.query.title || '';
+    const paymentStatus = req.query.paymentStatus || '';
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 5;
+    const skip = (page - 1) * limit;
 
-        if (role === "organizer") {
-            const organizerEvent = await Event.find({ organizer: userId }).select('_id');
-            filter.event = { $in: organizerEvent.map(event => event._id) };
-        }
-        if (title) {
-            const matchedEvents = await Event.find({ title: { $regex: title, $options: 'i' } }).select("_id")
-            const matchedEventsIds = matchedEvents.map(event => event._id);
-            if (filter.event) {
-                filter.event = {
-                    $in: matchedEventsIds.filter(id => filter.event.$in.includes(id))
-                }
-            } else {
-                filter.event = {
-                    $in: matchedEventsIds
-                }
-            }
-        }
-        if (paymentStatus) {
-            obj.paymentStatus = paymentStatus
-        }
+    let filter = {};
 
-        const total = await Booking.countDocuments(filter)
-        const bookings = await Booking.find(obj).skip(skip).limit(limit).populate("event user");
-        res.status(200).json({
-            success: true,
-            total,
-            page,
-            limit,
-            bookings
-        });
-
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-
+    if (role === "user") {
+      filter.user = userId;
     }
-}
+
+    if (role === "organizer") {
+      const organizerEvent = await Event.find({ organizer: userId }).select('_id');
+      filter.event = { $in: organizerEvent.map(event => event._id) };
+    }
+
+    if (title) {
+      const matchedEvents = await Event.find({
+        title: { $regex: title, $options: 'i' }
+      }).select("_id");
+
+      const matchedEventsIds = matchedEvents.map(event => event._id);
+
+      if (filter.event) {
+        filter.event = {
+          $in: matchedEventsIds.filter(id => filter.event.$in.includes(id))
+        };
+      } else {
+        filter.event = { $in: matchedEventsIds };
+      }
+    }
+
+    if (paymentStatus) {
+      filter.paymentStatus = paymentStatus;
+    }
+
+    const total = await Booking.countDocuments(filter);
+    const bookings = await Booking.find(filter)
+      .skip(skip)
+      .limit(limit)
+      .populate("event user");
+
+    res.status(200).json({
+      success: true,
+      total,
+      page,
+      limit,
+      bookings
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 
 
 export const stripeWebhook = async (req, res) => {
   const sig = req.headers["stripe-signature"];
   let event;
+
   try {
     event = stripe.webhooks.constructEvent(
-      req.body,
+      req.rawBody,
       sig,
       process.env.STRIPE_WEBHOOK_SECRET
     );
   } catch (err) {
-    console.error("Webhook signature verification failed:", err.message);
+    console.error("⚠️ Webhook signature verification failed.", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // ✅ Payment succeeded
-  if (event.type === "payment_intent.succeeded") {
-    const paymentIntent = event.data.object;
-    const bookingId = paymentIntent.metadata.bookingId;
+  switch (event.type) {
+    case "payment_intent.succeeded": {
+      const paymentIntent = event.data.object;
+      const bookingId = paymentIntent.metadata.bookingId;
 
-    const booking = await Booking.findById(bookingId).populate("event user");
-    if (!booking) {
-      console.error(`Booking ${bookingId} not found`);
-      return res.status(404).json({ error: "Booking not found" });
+      await Booking.findByIdAndUpdate(bookingId, { paymentStatus: "paid" });
+      console.log(`✅ Booking ${bookingId} marked as succeeded`);
+      break;
     }
+    case "payment_intent.payment_failed": {
+      const paymentIntent = event.data.object;
+      const bookingId = paymentIntent.metadata.bookingId;
 
-    // generate QR Code & upload
-    const qrUrl = await generateAndUploadQRCode(
-      `${process.env.FRONTEND_URL}/ticket/${booking._id}`,
-      "ticket_qr"
-    );
-
-    booking.paymentStatus = "paid";
-    booking.qrCode = qrUrl;
-    await booking.save();
-
-    console.log(`✅ Booking ${bookingId} marked as paid and QR generated.`);
-  }
-
-  if (event.type === "payment_intent.payment_failed") {
-    const paymentIntent = event.data.object;
-    const bookingId = paymentIntent.metadata.bookingId;
-
-    await Booking.findByIdAndUpdate(bookingId, { paymentStatus: "failed" });
-    console.log(`❌ Booking ${bookingId} marked as failed.`);
+      await Booking.findByIdAndUpdate(bookingId, { paymentStatus: "failed" });
+      console.log(`❌ Booking ${bookingId} marked as failed`);
+      break;
+    }
+    default:
+      console.log(`Unhandled event type ${event.type}`);
   }
 
   res.json({ received: true });
