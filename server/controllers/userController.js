@@ -30,7 +30,7 @@ export const registerUser = async (req, res) => {
             name,
             email,
             password,
-            image: `/uploads/${req.file.filename}`,
+            image: `/uploads/${req.file?.filename}`,
             role,
         });
 
@@ -42,7 +42,7 @@ export const registerUser = async (req, res) => {
         res.status(201).json({
             success: true,
             message: "Registered Successfully",
-            user: newUser,
+            newData: newUser,
             token,
         });
     } catch (error) {
@@ -67,7 +67,7 @@ export const loginUser = async (req, res) => {
         const token = generateToken(user);
         user.password = undefined;
 
-        res.status(200).json({ success: true, user, token });
+        res.status(200).json({ success: true,message:"Login successful", newData:user, token });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

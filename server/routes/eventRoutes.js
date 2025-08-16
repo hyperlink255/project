@@ -1,13 +1,30 @@
-import express from 'express'
-import { adminOnly, protect } from '../middleware/verifyToken.js'
-import upload from '../middleware/upload.js'
-import { approveEvent, createEvent, getDashboardData, getEvents, rejectEvent } from '../controllers/eventController.js'
-const router = express.Router()
+import express from "express";
+import {
+    createEvent,
+    getEvents,
+    getSingleEvent,
+    approveEvent,
+    rejectEvent,
+    updateEvent,
+    cancelEvent
+} from "../controllers/eventController.js";
 
-router.post("/event", protect, adminOnly, upload.single("image"), createEvent)
-router.get("/event", protect, getEvents)
-router.post("/event/approve/:id", protect, approveEvent)
-router.post("/event/reject/:id", protect, rejectEvent)
-router.get('/dashboard', protect, adminOnly, getDashboardData)
+import upload from "../middleware/upload.js"; 
+import { authorizeRoles,protect} from "../middleware/verifyToken.js";
 
-export default router
+const router = express.Router();
+
+// Public Routes
+router.get("/", getEvents);
+router.get("/:id", getSingleEvent);
+
+// Organizer / Admin
+router.post("/", protect, authorizeRoles("organizer", "admin"), upload.single("image"), createEvent);
+router.put("/:id", protect, authorizeRoles("organizer", "admin"), upload.single("image"), updateEvent);
+router.delete("/:id/cancel", protect, authorizeRoles("organizer", "admin"), cancelEvent);
+
+// Admin Only
+router.patch("/:id/approve", protect, authorizeRoles("admin"), approveEvent);
+router.patch("/:id/reject", protect, authorizeRoles("admin"), rejectEvent);
+
+export default router;

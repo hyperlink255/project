@@ -44,9 +44,15 @@ const eventSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    reviews : [{
+      type:mongoose.Schema.Types.ObjectId,
+      ref: "Review",
+      required:true,
+    }],
+    
     status: {
       type: String,
-      enum: ["pending", "approved", "rejected"],
+      enum: ["pending", "approved", "rejected","cancelled"],
       default: "pending",
     },
   },
